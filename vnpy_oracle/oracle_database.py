@@ -1,5 +1,6 @@
 """"""
 from datetime import datetime
+from re import S
 from typing import List
 
 import cx_Oracle
@@ -10,7 +11,12 @@ from sqlalchemy.orm import sessionmaker
 
 from vnpy.trader.constant import Exchange, Interval
 from vnpy.trader.object import BarData, TickData
-from vnpy.trader.database import BaseDatabase, BarOverview
+from vnpy.trader.database import (
+    BaseDatabase,
+    BarOverview,
+    DB_TZ,
+    convert_tz
+)
 from vnpy.trader.setting import SETTINGS
 
 
@@ -104,28 +110,116 @@ class OracleDatabase(BaseDatabase):
         host = SETTINGS["database.host"]
         port = SETTINGS["database.port"]
 
-        database = "XE"
-        user = "SYSTEM"
-        password = "vnpy"
-        host = "localhost"
-        port = "1521"
-
         url = f"oracle://{user}:{password}@{host}:{port}/{database}"
 
         # 连接服务器
 
-        engine = create_engine(url, encoding='utf8', max_identifier_length=128)
+        engine = create_engine(url, encoding='utf8', max_identifier_length=128, echo=True)
         Base.metadata.create_all(engine)
         Database = sessionmaker(bind=engine)
         self.db = Database()
 
     def save_bar_data(self, bars: List[BarData]) -> bool:
         """保存K线数据"""
-        pass
+
+        # Store key parameters
+        bar = bars[0]
+        symbol = bar.symbol
+        exchange = bar.exchange
+        interval = bar.interval
+
+        # Convert bar object to dict and adjust timezone
+        data = []
+
+        for bar in bars:
+            data = DbBarData(
+                symbol=bar.symbol,
+                exchange=exchange.value,
+                datetime=convert_tz(bar.datetime),
+                interval=interval.value,
+                volume=bar.volume,
+                open_interest=bar.open_interest,
+                open_price=bar.open_price,
+                high_price=bar.high_price,
+                low_price=bar.low_price,
+                close_price=bar.close_price
+                )
+            self.db.add(data)
+        
+        self.db.commit()
+
+        overview = self.db.query(DbBarOverview).filter(
+            DbBarOverview.symbol == symbol, 
+            DbBarOverview.exchange == exchange.value, 
+            DbBarOverview.interval == interval.value).first()
+
+        if not overview:
+            overview = DbBarOverview(
+                symbol=symbol,
+                exchange=exchange.value,
+                interval=interval.value,
+                count=len(bars),
+                start=bars[0].datetime,
+                end=bars[-1].datetime
+                )
+
+        else:
+            overview.start = min(bars[0].datetime, overview.start)
+            overview.end = max(bars[-1].datetime, overview.end)
+            overview.count = self.db.query(DbBarData).filter(
+                DbBarData.symbol == symbol,
+                DbBarData.exchange == exchange.value,
+                DbBarData.interval == interval.value).count()
+        
+        self.db.add(overview)
+        self.db.commit()
 
     def save_tick_data(self, ticks: List[TickData]) -> bool:
-        """保存TICK数据"""
-        pass
+        """"""
+        # Convert tick object to dict and adjust timezone
+        tick = ticks[0]
+        exchange = tick.exchange
+        data = []
+
+        for tick in ticks:
+            data = DbTickData(
+                symbol=tick.symbol,
+                exchange=exchange.value,
+                datetime=convert_tz(tick.datetime),
+                volume=tick.volume,
+                open_interest=tick.open_interest,
+                last_price=tick.last_price,
+                last_volume=tick.last_volume,
+                limit_up=tick.limit_up,
+                limit_down=tick.limit_down,
+                open_price=tick.open_price,
+                high_price=tick.high_price,
+                low_price=tick.low_price,
+                pre_close=tick.pre_price,
+                bid_price_1=tick.bid_price_1,
+                bid_price_2=tick.bid_price_2,
+                bid_price_3=tick.bid_price_3,
+                bid_price_4=tick.bid_price_4,
+                bid_price_5=tick.bid_price_5,
+                ask_price_1=tick.ask_price_1,
+                ask_price_2=tick.ask_price_2,
+                ask_price_3=tick.ask_price_3,
+                ask_price_4=tick.ask_price_4,
+                ask_price_5=tick.ask_price_5,
+                bid_volume_1=tick.bid_volume_1,
+                bid_volume_2=tick.bid_volume_2,
+                bid_volume_3=tick.bid_volume_3,
+                bid_volume_4=tick.bid_volume_4,
+                bid_volume_5=tick.bid_volume_5,
+                ask_volume_1=tick.ask_volume_1,
+                ask_volume_2=tick.ask_volume_2,
+                ask_volume_3=tick.ask_volume_3,
+                ask_volume_4=tick.ask_volume_4,
+                ask_volume_5=tick.ask_volume_5
+                )
+            self.db.add(data)
+        
+        self.db.commit()
 
     def load_bar_data(
         self,
@@ -135,8 +229,35 @@ class OracleDatabase(BaseDatabase):
         start: datetime,
         end: datetime
     ) -> List[BarData]:
-        """加载K线数据"""
-        pass
+        """"""
+
+        s = self.db.query(DbBarData).filter(
+            DbBarData.symbol == symbol,
+            DbBarData.exchange == exchange.value, 
+            DbBarData.interval == interval.value,
+            DbBarData.datetime >= start,
+            DbBarData.datetime <= end
+            ).order_by(DbBarData.datetime).all()
+
+        vt_symbol = f"{symbol}.{exchange.value}"
+        bars: List[BarData] = []
+        for db_bar in s:
+            data = BarData(
+                symbol=db_bar.symbol,
+                exchange=Exchange(db_bar.exchange),
+                datetime=DB_TZ.localize(db_bar.datetime),
+                interval=Interval(db_bar.interval),
+                volume=db_bar.volume,
+                open_interest=db_bar.open_interest,
+                open_price=db_bar.open_price,
+                high_price=db_bar.high_price,
+                low_price=db_bar.low_price,
+                close_price=db_bar.close_price,
+                gateway_name="DB"
+                )
+            bars.append(data)
+
+        return bars        
 
     def load_tick_data(
         self,
@@ -155,7 +276,25 @@ class OracleDatabase(BaseDatabase):
         interval: Interval
     ) -> int:
         """删除K线数据"""
-        pass
+        
+        count = self.db.query(DbBarData).filter(
+            DbBarData.symbol == symbol,
+            DbBarData.exchange == exchange.value,
+            DbBarData.interval == interval.value).count()
+
+        self.db.query(DbBarData).filter(
+            DbBarData.symbol == symbol,
+            DbBarData.exchange == exchange.value,
+            DbBarData.interval == interval.value).delete()
+
+        # Delete bar overview
+        self.db.query(DbBarOverview).filter(
+            DbBarOverview.symbol == symbol, 
+            DbBarOverview.exchange == exchange.value, 
+            DbBarOverview.interval == interval.value).delete()
+
+        self.db.commit()
+        return count
 
     def delete_tick_data(
         self,
@@ -167,7 +306,20 @@ class OracleDatabase(BaseDatabase):
 
     def get_bar_overview(self) -> List[BarOverview]:
         """查询数据库中的K线整体概况"""
-        pass
+        
+        s = self.db.query(DbBarOverview).all()
+        overviews = []
+        for overview in s:
+            data = BarOverview(
+                symbol=overview.symbol,
+                exchange=Exchange(overview.exchange),
+                interval=Interval(overview.interval),
+                count = overview.count,
+                start=overview.start,
+                end=overview.end
+                )
+            overviews.append(data)
+        return overviews
 
 
 database_manager = OracleDatabase()
