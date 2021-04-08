@@ -27,7 +27,7 @@ class DbBarData(Base):
     symbol = Column(String(255))
     exchange = Column(String(255))
     datetime = Column(DateTime)
-    interval = Column(String(255))   
+    interval = Column(String(255))
 
     volume = Column(Float)
     open_interest = Column(Float)
@@ -39,19 +39,19 @@ class DbBarData(Base):
 
 class DbTickData(Base):
     __tablename__ = 'DbTickData'
-    id = Column(Integer, Sequence('tick_id_seq'),primary_key=True)
+    id = Column(Integer, Sequence('tick_id_seq'), primary_key=True)
 
     symbol = Column(String(255))
     exchange = Column(String(255))
     datetime = Column(TIMESTAMP)
 
-    name = Column(String(255))  
+    name = Column(String(255))
     volume = Column(Float)
     open_interest = Column(Float)
     last_price = Column(Float)
     last_volume = Column(Float)
     limit_up = Column(Float)
-    limit_down = Column(Float) 
+    limit_down = Column(Float)
 
     open_price = Column(Float)
     high_price = Column(Float)
@@ -89,7 +89,7 @@ class DbBarOverview(Base):
 
     symbol = Column(String(255))
     exchange = Column(String(255))
-    interval = Column(String(255))   
+    interval = Column(String(255))
     count = Column(Integer)
     start = Column(DateTime)
     end = Column(DateTime)
@@ -141,12 +141,12 @@ class OracleDatabase(BaseDatabase):
                 close_price=bar.close_price
             )
             self.db.add(data)
-        
+  
         self.db.commit()
 
         overview = self.db.query(DbBarOverview).filter(
-            DbBarOverview.symbol == symbol, 
-            DbBarOverview.exchange == exchange.value, 
+            DbBarOverview.symbol == symbol,
+            DbBarOverview.exchange == exchange.value,
             DbBarOverview.interval == interval.value
         ).first()
 
@@ -168,7 +168,7 @@ class OracleDatabase(BaseDatabase):
                 DbBarData.exchange == exchange.value,
                 DbBarData.interval == interval.value
             ).count()
-        
+             
         self.db.add(overview)
         self.db.commit()
 
@@ -216,7 +216,7 @@ class OracleDatabase(BaseDatabase):
                 ask_volume_5=tick.ask_volume_5
             )
             self.db.add(data)
-        
+ 
         self.db.commit()
 
     def load_bar_data(
@@ -231,7 +231,7 @@ class OracleDatabase(BaseDatabase):
 
         s = self.db.query(DbBarData).filter(
             DbBarData.symbol == symbol,
-            DbBarData.exchange == exchange.value, 
+            DbBarData.exchange == exchange.value,
             DbBarData.interval == interval.value,
             DbBarData.datetime >= start,
             DbBarData.datetime <= end
@@ -254,7 +254,7 @@ class OracleDatabase(BaseDatabase):
             )
             bars.append(data)
 
-        return bars        
+        return bars
 
     def load_tick_data(
         self,
@@ -312,7 +312,7 @@ class OracleDatabase(BaseDatabase):
             )
             ticks.append(data)
 
-        return ticks     
+        return ticks
 
     def delete_bar_data(
         self,
@@ -330,8 +330,8 @@ class OracleDatabase(BaseDatabase):
 
         # Delete bar overview
         self.db.query(DbBarOverview).filter(
-            DbBarOverview.symbol == symbol, 
-            DbBarOverview.exchange == exchange.value, 
+            DbBarOverview.symbol == symbol,
+            DbBarOverview.exchange == exchange.value,
             DbBarOverview.interval == interval.value
         ).delete()
 
@@ -344,7 +344,7 @@ class OracleDatabase(BaseDatabase):
         exchange: Exchange
     ) -> int:
         """删除TICK数据"""
-        
+
         count = self.db.query(DbTickData).filter(
             DbTickData.symbol == symbol,
             DbTickData.exchange == exchange.value
@@ -355,7 +355,7 @@ class OracleDatabase(BaseDatabase):
 
     def get_bar_overview(self) -> List[BarOverview]:
         """查询数据库中的K线整体概况"""
-        
+
         s = self.db.query(DbBarOverview).all()
         overviews = []
         for overview in s:
@@ -363,7 +363,7 @@ class OracleDatabase(BaseDatabase):
                 symbol=overview.symbol,
                 exchange=Exchange(overview.exchange),
                 interval=Interval(overview.interval),
-                count = overview.count,
+                count=overview.count,
                 start=overview.start,
                 end=overview.end
             )
