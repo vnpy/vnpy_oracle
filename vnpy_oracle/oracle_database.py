@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import List
 
-from sqlalchemy import Column, Integer, String, DateTime, Float, Sequence, TIMESTAMP, create_engine
+from sqlalchemy import Column, Integer, String, DateTime, Float, TIMESTAMP, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -22,12 +22,11 @@ Base = declarative_base()
 
 class DbBarData(Base):
     __tablename__ = 'DbBarData'
-    id = Column(Integer, Sequence('bar_id_seq'), primary_key=True)
 
-    symbol = Column(String(255))
-    exchange = Column(String(255))
-    datetime = Column(DateTime)
-    interval = Column(String(255))
+    symbol = Column(String(255), primary_key=True)
+    exchange = Column(String(255), primary_key=True)
+    datetime = Column(DateTime, primary_key=True)
+    interval = Column(String(255), primary_key=True)
 
     volume = Column(Float)
     open_interest = Column(Float)
@@ -39,11 +38,10 @@ class DbBarData(Base):
 
 class DbTickData(Base):
     __tablename__ = 'DbTickData'
-    id = Column(Integer, Sequence('tick_id_seq'), primary_key=True)
 
-    symbol = Column(String(255))
-    exchange = Column(String(255))
-    datetime = Column(TIMESTAMP)
+    symbol = Column(String(255), primary_key=True)
+    exchange = Column(String(255), primary_key=True)
+    datetime = Column(TIMESTAMP, primary_key=True)
 
     name = Column(String(255))
     volume = Column(Float)
@@ -85,11 +83,10 @@ class DbTickData(Base):
 
 class DbBarOverview(Base):
     __tablename__ = 'DbBarOverview'
-    id = Column(Integer, Sequence('overview_id_seq'), primary_key=True)
 
-    symbol = Column(String(255))
-    exchange = Column(String(255))
-    interval = Column(String(255))
+    symbol = Column(String(255), primary_key=True)
+    exchange = Column(String(255), primary_key=True)
+    interval = Column(String(255), primary_key=True)
     count = Column(Integer)
     start = Column(DateTime)
     end = Column(DateTime)
@@ -106,9 +103,18 @@ class OracleDatabase(BaseDatabase):
         host = SETTINGS["database.host"]
         port = SETTINGS["database.port"]
 
+#        database = "XE"
+#        user = "SYSTEM"
+#        password = "vnpy"
+#        host = "localhost"
+#        port = 1521
+
         url = f"oracle://{user}:{password}@{host}:{port}/{database}"
 
         # 连接服务器
+
+        # echo为True时，将输出生成的所有SQL
+        # engine = create_engine(url, encoding='utf8', max_identifier_length=128, echo=True)
 
         engine = create_engine(url, encoding='utf8', max_identifier_length=128)
         Base.metadata.create_all(engine)
@@ -140,8 +146,8 @@ class OracleDatabase(BaseDatabase):
                 low_price=bar.low_price,
                 close_price=bar.close_price
             )
-            self.db.add(data)
-  
+            self.db.merge(data)
+
         self.db.commit()
 
         overview = self.db.query(DbBarOverview).filter(
@@ -156,20 +162,20 @@ class OracleDatabase(BaseDatabase):
                 exchange=exchange.value,
                 interval=interval.value,
                 count=len(bars),
-                start=bars[0].datetime,
-                end=bars[-1].datetime
+                start=convert_tz(bars[0].datetime),
+                end=convert_tz(bars[-1].datetime)
             )
 
         else:
-            overview.start = min(bars[0].datetime, DB_TZ.localize(overview.start))
-            overview.end = max(bars[-1].datetime, DB_TZ.localize(overview.end))
+            overview.start = min(convert_tz(bars[0].datetime), overview.start)
+            overview.end = max(convert_tz(bars[-1].datetime), overview.end)
             overview.count = self.db.query(DbBarData).filter(
                 DbBarData.symbol == symbol,
                 DbBarData.exchange == exchange.value,
                 DbBarData.interval == interval.value
             ).count()
-             
-        self.db.add(overview)
+    
+        self.db.merge(overview)
         self.db.commit()
 
     def save_tick_data(self, ticks: List[TickData]) -> bool:
@@ -215,8 +221,8 @@ class OracleDatabase(BaseDatabase):
                 ask_volume_4=tick.ask_volume_4,
                 ask_volume_5=tick.ask_volume_5
             )
-            self.db.add(data)
- 
+            self.db.merge(data)
+
         self.db.commit()
 
     def load_bar_data(
