@@ -103,11 +103,11 @@ class OracleDatabase(BaseDatabase):
         host = SETTINGS["database.host"]
         port = SETTINGS["database.port"]
 
-#        database = "XE"
-#        user = "SYSTEM"
-#        password = "vnpy"
-#        host = "localhost"
-#        port = 1521
+        # database = "XE"
+        # user = "SYSTEM"
+        # password = "vnpy"
+        # host = "localhost"
+        # port = 1521
 
         url = f"oracle://{user}:{password}@{host}:{port}/{database}"
 
@@ -134,10 +134,12 @@ class OracleDatabase(BaseDatabase):
         data = []
 
         for bar in bars:
+            bar.datetime = convert_tz(bar.datetime)
+
             data = DbBarData(
                 symbol=bar.symbol,
                 exchange=exchange.value,
-                datetime=convert_tz(bar.datetime),
+                datetime=bar.datetime,
                 interval=interval.value,
                 volume=bar.volume,
                 open_interest=bar.open_interest,
@@ -162,19 +164,19 @@ class OracleDatabase(BaseDatabase):
                 exchange=exchange.value,
                 interval=interval.value,
                 count=len(bars),
-                start=convert_tz(bars[0].datetime),
-                end=convert_tz(bars[-1].datetime)
+                start=bars[0].datetime,
+                end=bars[-1].datetime
             )
 
         else:
-            overview.start = min(convert_tz(bars[0].datetime), overview.start)
-            overview.end = max(convert_tz(bars[-1].datetime), overview.end)
+            overview.start = min(bars[0].datetime, overview.start)
+            overview.end = max(bars[-1].datetime, overview.end)
             overview.count = self.db.query(DbBarData).filter(
                 DbBarData.symbol == symbol,
                 DbBarData.exchange == exchange.value,
                 DbBarData.interval == interval.value
             ).count()
-    
+
         self.db.merge(overview)
         self.db.commit()
 
@@ -186,10 +188,12 @@ class OracleDatabase(BaseDatabase):
         data = []
 
         for tick in ticks:
+            tick.datetime = convert_tz(tick.datetime)
+
             data = DbTickData(
                 symbol=tick.symbol,
                 exchange=exchange.value,
-                datetime=convert_tz(tick.datetime),
+                datetime=tick.datetime,
                 volume=tick.volume,
                 open_interest=tick.open_interest,
                 last_price=tick.last_price,
